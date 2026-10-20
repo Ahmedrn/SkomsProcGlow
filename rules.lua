@@ -5,6 +5,7 @@ local _, ns = ...
 --   trigger  aura    = a buff on you (buff, stacks)
 --            debuff  = a debuff of yours on the target (buff)
 --            health  = the target's health is below `threshold` percent
+--            power   = your rage / energy / mana / runic power is above `threshold`
 --            usable  = the game says the spell is usable right now (Overpower, Revenge, Victory Rush, Kill Shot ...)
 --   glow     none, border, pixel, shine, button, proc
 ns.DefaultRules = {
@@ -17,6 +18,8 @@ ns.DefaultRules = {
 		{ id = "WAR_VR",      ability = "Victory Rush",  trigger = "usable",                           glow = "proc" },
 		{ id = "WAR_SLAM",    ability = "Slam",          trigger = "aura",   buff = "Slam!",           glow = "proc" },
 		{ id = "WAR_SS",      ability = "Shield Slam",   trigger = "aura",   buff = "Sword and Board", glow = "proc" },
+		{ id = "WAR_HS",      ability = "Heroic Strike", trigger = "power",  threshold = 50,           glow = "button" },
+		{ id = "WAR_CLV",     ability = "Cleave",        trigger = "power",  threshold = 50,           glow = "button", enabled = false },
 	},
 	PALADIN = {
 		{ id = "PAL_HOW",     ability = "Hammer of Wrath", trigger = "usable",                         glow = "button" },

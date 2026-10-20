@@ -89,6 +89,8 @@ local function RuleActive(rule, slot)
 		ok = HasTargetDebuff(rule.buff)
 	elseif t == "health" then
 		ok = TargetHealthBelow(rule.threshold)
+	elseif t == "power" then
+		ok = (UnitPower("player") or 0) > (rule.threshold or 50)
 	elseif t == "usable" then
 		local usable, noMana = IsUsableAction(slot)
 		ok = usable or noMana   -- a proc does not wait for the resource
@@ -284,7 +286,7 @@ end
 -- ---------------------------------------------------------------------------------------------------------
 local GLOW_VALUES = { none = "No glow", border = "Border", pixel = "Pixel glow", shine = "Autocast shine", button = "Action button glow", proc = "Proc glow" }
 local GLOW_SORT = { "none", "border", "pixel", "shine", "button", "proc" }
-local TRIGGERS = { aura = "A buff on you", debuff = "A debuff of yours on the target", health = "The target's health is low", usable = "The spell becomes usable" }
+local TRIGGERS = { aura = "A buff on you", debuff = "A debuff of yours on the target", health = "The target's health is low", usable = "The spell becomes usable", power = "Your rage / energy / mana is high" }
 
 local function Describe(rule)
 	local t = rule.trigger
@@ -294,6 +296,8 @@ local function Describe(rule)
 		return "when your " .. (rule.buff or "?") .. " is on the target"
 	elseif t == "health" then
 		return "when the target is below " .. (rule.threshold or 20) .. "%"
+	elseif t == "power" then
+		return "when your rage / energy / mana is above " .. (rule.threshold or 50)
 	end
 	return "when it becomes usable"
 end
@@ -348,6 +352,12 @@ local function RuleEditors(getRule, setField, onReset, onRemove)
 			type = "range", name = "Target health below (%)", order = 7, min = 5, max = 100, step = 1,
 			hidden = show("health"),
 			get = function() return getRule().threshold or 20 end,
+			set = function(_, v) setField("threshold", v) end,
+		},
+		power = {
+			type = "range", name = "Rage / energy / mana above", order = 8, min = 1, max = 150, step = 1,
+			hidden = show("power"),
+			get = function() return getRule().threshold or 50 end,
 			set = function(_, v) setField("threshold", v) end,
 		},
 	}
@@ -458,6 +468,8 @@ local function BuildOptions()
 						get = function() return addForm.buff end, set = function(_, v) addForm.buff = v end },
 					threshold = { type = "range", order = 5, name = "Target health below (%)", min = 5, max = 100, step = 1, hidden = function() return addForm.trigger ~= "health" end,
 						get = function() return addForm.threshold end, set = function(_, v) addForm.threshold = v end },
+					power = { type = "range", order = 5.5, name = "Rage / energy / mana above", min = 1, max = 150, step = 1, hidden = function() return addForm.trigger ~= "power" end,
+						get = function() return addForm.threshold end, set = function(_, v) addForm.threshold = v end },
 					glow = { type = "select", order = 6, name = "Glow", values = GLOW_VALUES, sorting = GLOW_SORT,
 						get = function() return addForm.glow end, set = function(_, v) addForm.glow = v end },
 					add = { type = "execute", order = 7, name = "Add the rule", func = function()
@@ -531,7 +543,8 @@ events:SetScript("OnEvent", function(self, event, arg1)
 		Scan()
 		wipe(slotNames)
 		dirty = true
-	elseif event == "UNIT_AURA" or event == "UNIT_HEALTH" or event == "UNIT_MAXHEALTH" then
+	elseif event == "UNIT_AURA" or event == "UNIT_HEALTH" or event == "UNIT_MAXHEALTH" or event == "UNIT_RAGE" or event == "UNIT_ENERGY"
+		or event == "UNIT_MANA" or event == "UNIT_RUNIC_POWER" or event == "UNIT_FOCUS" then
 		if arg1 == "player" or arg1 == "target" then dirty = true end
 	elseif event == "ACTIONBAR_SLOT_CHANGED" or event == "UPDATE_SHAPESHIFT_FORM" or event == "ACTIONBAR_PAGE_CHANGED"
 		or event == "UPDATE_BONUS_ACTIONBAR" or event == "SPELLS_CHANGED" or event == "UPDATE_MACROS" then
@@ -542,6 +555,7 @@ events:SetScript("OnEvent", function(self, event, arg1)
 	end
 end)
 for _, e in ipairs{ "PLAYER_LOGIN", "PLAYER_ENTERING_WORLD", "UNIT_AURA", "UNIT_HEALTH", "UNIT_MAXHEALTH", "PLAYER_TARGET_CHANGED",
+                    "UNIT_RAGE", "UNIT_ENERGY", "UNIT_MANA", "UNIT_RUNIC_POWER", "UNIT_FOCUS",
                     "ACTIONBAR_UPDATE_USABLE", "ACTIONBAR_UPDATE_COOLDOWN", "ACTIONBAR_SLOT_CHANGED", "UPDATE_SHAPESHIFT_FORM",
                     "ACTIONBAR_PAGE_CHANGED", "UPDATE_BONUS_ACTIONBAR", "SPELLS_CHANGED", "UPDATE_MACROS", "PLAYER_REGEN_DISABLED",
                     "PLAYER_REGEN_ENABLED" } do
