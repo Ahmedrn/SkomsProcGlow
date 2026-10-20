@@ -204,7 +204,10 @@ end
 -- ---------------------------------------------------------------------------------------------------------
 local buttons = {}   -- every action button we have seen
 
+local testButtons = {}
+
 local function Evaluate(button)
+	if testButtons and testButtons[button] then return end
 	local slot = button.action
 	local style, color
 	if P.enabled and type(slot) == "number" and HasAction(slot) and button:IsVisible() then
@@ -494,17 +497,29 @@ end
 -- ---------------------------------------------------------------------------------------------------------
 -- test: every style on the first buttons
 -- ---------------------------------------------------------------------------------------------------------
-local testing
+-- test: every style on the first buttons (the normal evaluation leaves those buttons alone meanwhile)
+
 function ns.Test()
-	local order = { "border", "pixel", "shine", "button", "proc" }
+	-- visible buttons from every bar we know (Blizzard, Bartender4, ...), lowest action slot first
+	Scan()
 	local list = {}
-	for i = 1, 12 do
-		local b = _G["ActionButton" .. i] or _G["BT4Button" .. i]
-		if b and b:IsVisible() then list[#list + 1] = b end
+	for button in pairs(buttons) do
+		if type(button.action) == "number" and button:IsVisible() then list[#list + 1] = button end
 	end
-	testing = GetTime() + 6
+	table.sort(list, function(a, b) return a.action < b.action end)
+	local order = { "border", "pixel", "shine", "button", "proc" }
+	if #list == 0 then
+		print("|cff33ff99SkomsProcGlow|r: no visible action buttons found.")
+		return
+	end
+	print("|cff33ff99SkomsProcGlow|r: showing border, pixel, shine, button and proc glow on your first " .. math.min(#list, #order) .. " buttons for 6 seconds.")
+	local used = {}
 	for i, b in ipairs(list) do
-		if order[i] then ApplyGlow(b, order[i]) end
+		if order[i] then
+			testButtons[b] = true
+			used[#used + 1] = b
+			ApplyGlow(b, order[i])
+		end
 	end
 	local t = CreateFrame("Frame")
 	local waited = 0
@@ -512,8 +527,10 @@ function ns.Test()
 		waited = waited + e
 		if waited >= 6 then
 			self:SetScript("OnUpdate", nil)
-			testing = nil
-			for _, b in ipairs(list) do ApplyGlow(b, nil) end
+			for _, b in ipairs(used) do
+				testButtons[b] = nil
+				ApplyGlow(b, nil)
+			end
 			dirty = true
 		end
 	end)

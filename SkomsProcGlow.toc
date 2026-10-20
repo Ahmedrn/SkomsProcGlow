@@ -1,7 +1,7 @@
 ## Interface: 30300
 ## Title: SkomsProcGlow
 ## Notes: Glows action buttons (Blizzard bars, Bartender4, ...) on procs, execute range and usable-now spells, for every class. Rules are editable.
-## Version: 0.1.1
+## Version: 0.1.2
 ## Author: Skom
 ## SavedVariables: SkomsProcGlowDB
 ## OptionalDeps: Bartender4, LibStub, CallbackHandler-1.0, LibCustomGlow-1.0, WeakAuras
