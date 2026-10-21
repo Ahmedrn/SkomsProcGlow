@@ -26,6 +26,14 @@ By default a glow only shows while the spell is off cooldown; this can be turned
 ## Install
 Put the `SkomsProcGlow` folder in `Interface\AddOns`.
 
+## Help, missing rules and feedback
+The default rules cover the 10 classes, but I cannot test every spec. If a rule is missing or wrong for your class or spec (a proc that does not glow, a wrong buff name, a glow that stays on), tell me the **class, spec and spell** and I will fix or add it:
+- **GitHub issues:** https://github.com/Ahmedrn/SkomsProcGlow/issues
+- **A comment on the Warperia page**
+- **Discord:** `skomzx`
+
+You can also add the rule yourself in `/spg` > *Your own rules*.
+
 ## Credits
 - Glow styles: **LibCustomGlow-1.0** (used if present).
 - Settings with **Ace3**.

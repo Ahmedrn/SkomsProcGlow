@@ -461,6 +461,16 @@ local function BuildOptions()
 			test = { type = "execute", order = 4, name = "Test the glow styles", desc = "Shows each style on the first bar's buttons for a few seconds.",
 				func = function() ns.Test() end },
 			rules = { type = "group", order = 10, name = "Rules for your class", args = {} },
+			help = {
+				type = "group", order = 30, name = "Help and feedback",
+				args = {
+					text = { type = "description", fontSize = "medium", order = 1,
+						name = "A rule missing for your class or spec, a wrong buff name, a glow that does not show? Tell me which class, spec and spell and I will fix or add it.\n\n"
+							.. "- GitHub issues: https://github.com/Ahmedrn/SkomsProcGlow/issues\n"
+							.. "- A comment on the Warperia page\n"
+							.. "- Discord: skomzx (direct message)" },
+				},
+			},
 			custom = {
 				type = "group", order = 20, name = "Your own rules",
 				args = {
