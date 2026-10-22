@@ -1,10 +1,13 @@
 # Changelog
 
+## 1.1.0 (2026-10-22)
+
+- An About tab in the options: how to get help (GitHub issues, Warperia, Discord) and the other addons by Skom, with what is installed. ArenaLFG is marked as Warmane only.
+- `/spg` opens the addon's own settings window (it used to open only the Interface > AddOns list).
+
 ## 1.0.0 (2026-10-21)
 
 First release.
-
-- An About tab in the options: how to get help (GitHub issues, Warperia, Discord) and the other addons by Skom, with what is installed. ArenaLFG is marked as Warmane only.
 - Glows action buttons when a spell is worth pressing, for every class. Works on the Blizzard bars, Bartender4, and ElvUI / Dominos buttons. A macro counts through its `#showtooltip` spell.
 - Four triggers: a buff on you (a proc), the target's health below a threshold (execute range), your rage / energy / mana above a number, and a spell that has just become usable. A fifth, a debuff of yours on the target, covers Lava Burst with Flame Shock.
 - 48 default rules for the 10 classes. The spell and buff names were checked against the 3.3.5a client data.

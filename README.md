@@ -1,6 +1,6 @@
 <p align="center"><img src="logo.png" alt="SkomsProcGlow" width="120"></p>
 
-# SkomsProcGlow 1.0.0 (WoW 3.3.5a)
+# SkomsProcGlow 1.1.0 (WoW 3.3.5a)
 
 Glows your action buttons when a spell is worth pressing, for every class. Works on the Blizzard bars, **Bartender4** and most bar addons.
 
