@@ -561,7 +561,7 @@ events:SetScript("OnEvent", function(self, event, arg1)
 		db.RegisterCallback(ns, "OnProfileReset", profileChanged)
 		Compile()
 		local options = BuildOptions()
-		options.args.about = ns.AboutGroup(99)
+		if ns.AboutGroup then options.args.about = ns.AboutGroup(99) end   -- about.lua needs a full restart after an update
 		LibStub("AceConfig-3.0"):RegisterOptionsTable("SkomsProcGlow", options)
 		LibStub("AceConfigDialog-3.0"):AddToBlizOptions("SkomsProcGlow", "SkomsProcGlow")
 		LibStub("AceConfig-3.0"):RegisterOptionsTable("SkomsProcGlowProfiles", LibStub("AceDBOptions-3.0"):GetOptionsTable(db))
