@@ -598,8 +598,14 @@ SlashCmdList["SKOMSPROCGLOW"] = function(msg)
 	if msg == "test" then
 		ns.Test()
 	else
-		InterfaceOptionsFrame_OpenToCategory("SkomsProcGlow")
-		InterfaceOptionsFrame_OpenToCategory("SkomsProcGlow")
+		-- own window: InterfaceOptionsFrame_OpenToCategory often only opens the AddOns list
+		local ACD = LibStub("AceConfigDialog-3.0")
+		if ACD.OpenFrames["SkomsProcGlow"] then
+			ACD:Close("SkomsProcGlow")
+		else
+			if InterfaceOptionsFrame and InterfaceOptionsFrame:IsShown() then InterfaceOptionsFrame:Hide() end
+			ACD:Open("SkomsProcGlow")
+		end
 	end
 end
 
