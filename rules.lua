@@ -6,15 +6,17 @@ local _, ns = ...
 --            debuff  = a debuff of yours on the target (buff)
 --            health  = the target's health is below `threshold` percent
 --            power   = your rage / energy / mana / runic power is above `threshold`
+--            avoided = you blocked, dodged or parried in the last 5 seconds (Revenge, in any stance)
+--            dodged  = your target dodged in the last 5 seconds (Overpower, in any stance)
 --            usable  = the game says the spell is usable right now (Overpower, Revenge, Victory Rush, Kill Shot ...)
 --   glow     none, border, pixel, shine, button, proc
 ns.DefaultRules = {
 	WARRIOR = {
 		{ id = "WAR_EXE_SD",  ability = "Execute",       trigger = "aura",   buff = "Sudden Death",    glow = "proc" },
 		{ id = "WAR_EXE_HP",  ability = "Execute",       trigger = "health", threshold = 20,           glow = "button" },
-		{ id = "WAR_OP",      ability = "Overpower",     trigger = "usable",                           glow = "proc" },
+		{ id = "WAR_OP",      ability = "Overpower",     trigger = "dodged",                           glow = "proc" },
 		{ id = "WAR_OP_TFB",  ability = "Overpower",     trigger = "aura",   buff = "Taste for Blood", glow = "proc" },
-		{ id = "WAR_REV",     ability = "Revenge",       trigger = "usable",                           glow = "proc" },
+		{ id = "WAR_REV",     ability = "Revenge",       trigger = "avoided",                          glow = "proc" },
 		{ id = "WAR_VR",      ability = "Victory Rush",  trigger = "usable",                           glow = "proc" },
 		{ id = "WAR_SLAM",    ability = "Slam",          trigger = "aura",   buff = "Slam!",           glow = "proc" },
 		{ id = "WAR_SS",      ability = "Shield Slam",   trigger = "aura",   buff = "Sword and Board", glow = "proc" },

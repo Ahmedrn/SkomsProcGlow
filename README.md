@@ -11,7 +11,9 @@ Glows your action buttons when a spell is worth pressing, for every class. Works
 - **A buff on you** (a proc): Sudden Death, Taste for Blood, Slam!, Sword and Board, Hot Streak, Missile Barrage, Brain Freeze, Fingers of Frost, Shadow Trance, Decimation, Molten Core, Backlash, Eclipse, Maelstrom Weapon (5 stacks), Rime, Killing Machine, Sudden Doom, The Art of War, Lock and Load, Surge of Light, Predator's Swiftness ...
 - **The target's health is low:** Execute (below 20%), Drain Soul (below 25%).
 - **Your rage / energy / mana is high:** Heroic Strike above 50 rage (Cleave too, switched off by default).
-- **The spell becomes usable:** Overpower, Revenge, Victory Rush, Hammer of Wrath, Kill Shot, Mongoose Bite, Counterattack, Riposte.
+- **You blocked, dodged or parried (5 sec):** Revenge, in any stance.
+- **Your target dodged (5 sec):** Overpower, in any stance.
+- **The spell becomes usable:** Victory Rush, Hammer of Wrath, Kill Shot, Mongoose Bite, Counterattack, Riposte.
 - **A debuff of yours on the target:** Lava Burst with Flame Shock.
 
 48 default rules for the 10 classes; the names are checked against the 3.3.5a client data. Each one can be switched off, given another glow style or colour, and have its buff, stacks or threshold changed. You can add rules for any spell on your bars.

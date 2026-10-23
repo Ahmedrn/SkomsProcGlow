@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- Revenge glows for 5 seconds after you block, dodge or parry, in any stance (the game only marks it usable in Defensive Stance). Overpower the same way after your target dodges. New triggers for your own rules.
+- Warriors: Overpower, Revenge and Execute glow in another color (blue by default) while you are in a stance that cannot cast them, so you know to switch stance first. Can be switched off; the color can be changed.
+
 ## 1.1.0 (2026-10-22)
 
 - An About tab in the options: how to get help (GitHub issues, Warperia, Discord) and the other addons by Skom, with what is installed. ArenaLFG is marked as Warmane only.

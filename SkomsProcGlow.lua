@@ -18,6 +18,8 @@ local defaults = {
 	profile = {
 		enabled = true,
 		requireReady = true,   -- only glow while the spell is off cooldown
+		stanceHint = true,     -- another color when the spell needs another stance
+		stanceColor = { 0.25, 0.55, 1 },
 		overrides = {},        -- [ruleId] = { enabled, glow, color, buff, stacks, threshold }
 		custom = {},           -- user rules
 		nextCustom = 1,
@@ -80,6 +82,44 @@ local function TargetHealthBelow(threshold)
 	return (UnitHealth("target") / max) * 100 < (threshold or 20)
 end
 
+-- Revenge: the game only says it is usable in Defensive Stance, so the window is read from the combat log
+-- instead: you blocked, dodged or parried an attack (a partial block counts) in the last 5 seconds
+local AVOID_WINDOW = 5
+local avoidedUntil = 0
+-- Overpower the same way (the game only marks it usable in Battle Stance): your attack was dodged
+local dodgedUntil = 0
+local AVOIDED = { BLOCK = true, DODGE = true, PARRY = true }
+
+local function OnCombatLog(...)
+	local event, sourceGUID, _, _, destGUID = select(2, ...)
+	local hit
+	local me = UnitGUID("player")
+	if sourceGUID == me and ((event == "SWING_MISSED" and select(9, ...) == "DODGE")
+		or ((event == "SPELL_MISSED" or event == "RANGE_MISSED") and select(12, ...) == "DODGE")) then
+		dodgedUntil = GetTime() + AVOID_WINDOW
+		return true
+	end
+	if destGUID == me then
+		if event == "SWING_MISSED" then
+			hit = AVOIDED[select(9, ...)]
+		elseif event == "SPELL_MISSED" or event == "RANGE_MISSED" then
+			hit = AVOIDED[select(12, ...)]
+		elseif event == "SWING_DAMAGE" then
+			hit = (select(13, ...) or 0) > 0
+		elseif event == "SPELL_DAMAGE" or event == "RANGE_DAMAGE" then
+			hit = (select(16, ...) or 0) > 0
+		end
+	elseif event == "SPELL_CAST_SUCCESS" and sourceGUID == me then
+		local spell = select(10, ...)
+		if spell == "Revenge" then avoidedUntil = 0; return true end   -- used up
+		if spell == "Overpower" then dodgedUntil = 0; return true end
+	end
+	if hit then
+		avoidedUntil = GetTime() + AVOID_WINDOW
+		return true
+	end
+end
+
 local function RuleActive(rule, slot)
 	local ok
 	local t = rule.trigger
@@ -91,6 +131,10 @@ local function RuleActive(rule, slot)
 		ok = TargetHealthBelow(rule.threshold)
 	elseif t == "power" then
 		ok = (UnitPower("player") or 0) > (rule.threshold or 50)
+	elseif t == "avoided" then
+		ok = GetTime() < avoidedUntil
+	elseif t == "dodged" then
+		ok = GetTime() < dodgedUntil
 	elseif t == "usable" then
 		local usable, noMana = IsUsableAction(slot)
 		ok = usable or noMana   -- a proc does not wait for the resource
@@ -206,6 +250,27 @@ local buttons = {}   -- every action button we have seen
 
 local testButtons = {}
 
+-- the stances a warrior spell can be cast in (the ones not listed work in any stance)
+local STANCES = {
+	["Overpower"] = { ["Battle Stance"] = true },
+	["Revenge"] = { ["Defensive Stance"] = true },
+	["Execute"] = { ["Battle Stance"] = true, ["Berserker Stance"] = true },
+}
+
+local function CurrentStance()
+	for i = 1, (GetNumShapeshiftForms() or 0) do
+		local _, name, active = GetShapeshiftFormInfo(i)
+		if active then return name end
+	end
+end
+
+local function WrongStance(spell)
+	local need = playerClass == "WARRIOR" and STANCES[spell]
+	if not need then return false end
+	local now = CurrentStance()
+	return not (now and need[now])
+end
+
 local function Evaluate(button)
 	if testButtons and testButtons[button] then return end
 	local slot = button.action
@@ -218,6 +283,7 @@ local function Evaluate(button)
 				local r = rules[i]
 				if RuleActive(r, slot) then
 					style, color = r.glow, r.color
+					if P.stanceHint and WrongStance(name) then color = P.stanceColor end
 					break
 				end
 			end
@@ -261,6 +327,8 @@ local dirty, waited = false, 0
 local frame = CreateFrame("Frame")
 frame:SetScript("OnUpdate", function(self, elapsed)
 	waited = waited + elapsed
+	if avoidedUntil > 0 and GetTime() >= avoidedUntil then avoidedUntil = 0; dirty = true end
+	if dodgedUntil > 0 and GetTime() >= dodgedUntil then dodgedUntil = 0; dirty = true end
 	if dirty and waited >= 0.05 then
 		dirty, waited = false, 0
 		EvaluateAll()
@@ -289,7 +357,7 @@ end
 -- ---------------------------------------------------------------------------------------------------------
 local GLOW_VALUES = { none = "No glow", border = "Border", pixel = "Pixel glow", shine = "Autocast shine", button = "Action button glow", proc = "Proc glow" }
 local GLOW_SORT = { "none", "border", "pixel", "shine", "button", "proc" }
-local TRIGGERS = { aura = "A buff on you", debuff = "A debuff of yours on the target", health = "The target's health is low", usable = "The spell becomes usable", power = "Your rage / energy / mana is high" }
+local TRIGGERS = { aura = "A buff on you", debuff = "A debuff of yours on the target", health = "The target's health is low", usable = "The spell becomes usable", avoided = "You blocked, dodged or parried (5 sec)", dodged = "Your target dodged (5 sec)", power = "Your rage / energy / mana is high" }
 
 local function Describe(rule)
 	local t = rule.trigger
@@ -301,6 +369,10 @@ local function Describe(rule)
 		return "when the target is below " .. (rule.threshold or 20) .. "%"
 	elseif t == "power" then
 		return "when your rage / energy / mana is above " .. (rule.threshold or 50)
+	elseif t == "avoided" then
+		return "for 5 sec after you block, dodge or parry, in any stance"
+	elseif t == "dodged" then
+		return "for 5 sec after your target dodges, in any stance"
 	end
 	return "when it becomes usable"
 end
@@ -453,6 +525,18 @@ local function BuildOptions()
 				get = function() return P.requireReady end,
 				set = function(_, v) P.requireReady = v; Reset() end,
 			},
+			stanceHint = {
+				type = "toggle", order = 2.1, width = "double", name = "Another color when you must change stance first",
+				desc = "Warriors: Overpower (Battle Stance), Revenge (Defensive Stance) and Execute (Battle or Berserker Stance) glow in this color while you are in another stance.",
+				get = function() return P.stanceHint end,
+				set = function(_, v) P.stanceHint = v; Reset() end,
+			},
+			stanceColor = {
+				type = "color", order = 2.2, name = "Stance color",
+				disabled = function() return not P.stanceHint end,
+				get = function() local c = P.stanceColor; return c[1], c[2], c[3] end,
+				set = function(_, r, g, b) P.stanceColor = { r, g, b }; Reset() end,
+			},
 			info = {
 				type = "description", order = 3,
 				name = "Glows work on the Blizzard bars, Bartender4 and most bar addons. A macro counts through its #showtooltip spell. "
@@ -550,7 +634,7 @@ end
 -- start
 -- ---------------------------------------------------------------------------------------------------------
 local events = CreateFrame("Frame")
-events:SetScript("OnEvent", function(self, event, arg1)
+events:SetScript("OnEvent", function(self, event, arg1, ...)
 	if event == "PLAYER_LOGIN" then
 		playerClass = select(2, UnitClass("player"))
 		db = LibStub("AceDB-3.0"):New("SkomsProcGlowDB", defaults, true)
@@ -568,6 +652,8 @@ events:SetScript("OnEvent", function(self, event, arg1)
 		LibStub("AceConfigDialog-3.0"):AddToBlizOptions("SkomsProcGlowProfiles", "Profiles", "SkomsProcGlow")
 		Scan()
 		dirty = true
+	elseif event == "COMBAT_LOG_EVENT_UNFILTERED" then
+		if OnCombatLog(arg1, ...) then dirty = true end
 	elseif event == "PLAYER_ENTERING_WORLD" then
 		Scan()
 		wipe(slotNames)
@@ -587,7 +673,7 @@ for _, e in ipairs{ "PLAYER_LOGIN", "PLAYER_ENTERING_WORLD", "UNIT_AURA", "UNIT_
                     "UNIT_RAGE", "UNIT_ENERGY", "UNIT_MANA", "UNIT_RUNIC_POWER", "UNIT_FOCUS",
                     "ACTIONBAR_UPDATE_USABLE", "ACTIONBAR_UPDATE_COOLDOWN", "ACTIONBAR_SLOT_CHANGED", "UPDATE_SHAPESHIFT_FORM",
                     "ACTIONBAR_PAGE_CHANGED", "UPDATE_BONUS_ACTIONBAR", "SPELLS_CHANGED", "UPDATE_MACROS", "PLAYER_REGEN_DISABLED",
-                    "PLAYER_REGEN_ENABLED" } do
+                    "PLAYER_REGEN_ENABLED", "COMBAT_LOG_EVENT_UNFILTERED" } do
 	events:RegisterEvent(e)
 end
 
