@@ -4,16 +4,24 @@ local ADDON, ns = ...
 local DISCORD = "skomzx"
 local OWNER = "Ahmedrn"
 
--- name, what it does, optional note shown in orange
+-- folder (also the GitHub project), display name, what it does, optional note shown in orange
 local ADDONS = {
-	{ "SkomsPlateBuffs", "Enemy nameplate auras in rows around the plate: crowd control, immunities, cooldowns and your own debuffs, with glow and a spells tab." },
-	{ "SkomsProcGlow", "Glows your action buttons when a spell is worth pressing: procs, execute range, usable-now spells. Works with Bartender4." },
-	{ "SkomsHealerCC", "A big alert with a countdown and a sound when an enemy crowd control lands on your healer." },
-	{ "SkomsAdvancedInterfaceOptions", "The hidden game settings (camera, nameplates, combat, chat, sound ...) in one window, kept at every login." },
-	{ "SkomsProfileSync", "Set up one character, then copy its bars, keybinds, macros, BindPad and addon profiles to your other characters." },
-	{ "SkomsChatShield", "Hides spam in every chat channel: editable phrases, blocked players, repeat and copy-paste detection." },
-	{ "ArenaLFG", "2v2, 3v3 and DuoQ arena partner finder with synced listings.", "Warmane only: made for the Warmane server." },
+	{ "SkomsPlateBuffs", "Skom's Plate Buffs", "Enemy nameplate auras in rows around the plate: crowd control, immunities, cooldowns and your own debuffs, with glow and a spells tab." },
+	{ "SkomsProcGlow", "Skom's Proc Glow", "Glows your action buttons when a spell is worth pressing: procs, execute range, usable-now spells. Works with Bartender4." },
+	{ "SkomsHealerCC", "Skom's Healer CC", "A big alert with a countdown and a sound when an enemy crowd control lands on your healer." },
+	{ "SkomsAdvancedInterfaceOptions", "Skom's Advanced Interface Options", "The hidden game settings (camera, nameplates, combat, chat, sound ...) in one window, kept at every login." },
+	{ "SkomsProfileSync", "Skom's Profile Sync", "Set up one character, then copy its bars, keybinds, macros, BindPad and addon profiles to your other characters." },
+	{ "SkomsChatShield", "Skom's Chat Shield", "Hides spam in every chat channel: editable phrases, blocked players, repeat and copy-paste detection." },
+	{ "SkomsArenaStats", "Skom's Arena Stats", "Arena history and a weekly summary of all your characters: games, rating, honor and the arena points coming on reset day.", "Warmane only: made for the Warmane server." },
+	{ "ArenaLFG", "ArenaLFG", "2v2, 3v3 and DuoQ arena partner finder with synced listings.", "Warmane only: made for the Warmane server." },
 }
+
+local function DisplayName(name)
+	for _, e in ipairs(ADDONS) do
+		if e[1] == name then return e[2] end
+	end
+	return name
+end
 
 local function Installed(name)
 	if name == ADDON then return true end
@@ -26,8 +34,15 @@ function ns.AboutGroup(order)
 	local a = g.args
 
 	a.title = { type = "description", order = 1, fontSize = "large",
-		name = function() return ("%s %s"):format(ADDON, GetAddOnMetadata(ADDON, "Version") or "") end }
-	a.by = { type = "description", order = 2, fontSize = "medium", name = "by Skom" }
+		name = function() return ("%s %s"):format(DisplayName(ADDON), GetAddOnMetadata(ADDON, "Version") or "") end }
+	-- an addon made for one server says so under its own name too
+	a.by = { type = "description", order = 2, fontSize = "medium",
+		name = function()
+			for _, e in ipairs(ADDONS) do
+				if e[1] == ADDON and e[4] then return "by Skom  |cffff8800" .. e[4] .. "|r" end
+			end
+			return "by Skom"
+		end }
 	a.notes = { type = "description", order = 3, fontSize = "medium",
 		name = function() return "\n" .. (GetAddOnMetadata(ADDON, "Notes") or "") end }
 
@@ -48,8 +63,8 @@ function ns.AboutGroup(order)
 			for _, e in ipairs(ADDONS) do
 				if e[1] ~= ADDON then
 					local state = Installed(e[1]) and "|cff55ff55installed|r" or "|cff999999not installed|r"
-					local line = ("|cffffd100%s|r (%s)\n%s"):format(e[1], state, e[2])
-					if e[3] then line = line .. " |cffff8800" .. e[3] .. "|r" end
+					local line = ("|cffffd100%s|r (%s)\n%s"):format(e[2], state, e[3])
+					if e[4] then line = line .. " |cffff8800" .. e[4] .. "|r" end
 					lines[#lines + 1] = line
 				end
 			end
@@ -59,7 +74,7 @@ function ns.AboutGroup(order)
 		get = function()
 			local lines = {}
 			for _, e in ipairs(ADDONS) do
-				if e[1] ~= ADDON then lines[#lines + 1] = ("%s: https://github.com/%s/%s"):format(e[1], OWNER, e[1]) end
+				if e[1] ~= ADDON then lines[#lines + 1] = ("%s: https://github.com/%s/%s"):format(e[2], OWNER, e[1]) end
 			end
 			return table.concat(lines, "\n")
 		end, set = function() end }

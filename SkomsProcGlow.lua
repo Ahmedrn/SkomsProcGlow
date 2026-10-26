@@ -20,7 +20,7 @@ local defaults = {
 		requireReady = true,   -- only glow while the spell is off cooldown
 		stanceHint = true,     -- another color when the spell needs another stance
 		stanceColor = { 0.25, 0.55, 1 },
-		overrides = {},        -- [ruleId] = { enabled, glow, color, buff, stacks, threshold }
+		overrides = {},        -- [ruleId] = { enabled, glow, color, buff, stacks, threshold, remaining, condPower }
 		custom = {},           -- user rules
 		nextCustom = 1,
 	}
@@ -75,6 +75,26 @@ local function HasTargetDebuff(debuff)
 	return name ~= nil and (caster == "player" or caster == "pet")
 end
 
+-- your debuff is missing on the target, or fades in under `remaining` seconds. Nothing fires when that moment
+-- comes, so the time is kept in recheckAt and the OnUpdate asks for an evaluation then.
+local recheckAt = 0
+local function MyDebuffFading(debuff, remaining)
+	if not debuff or debuff == "" or not UnitExists("target") or not UnitCanAttack("player", "target")
+		or UnitIsDeadOrGhost("target") then return false end
+	for i = 1, 40 do
+		local name, _, _, _, _, _, expires, caster = UnitDebuff("target", i)
+		if not name then break end
+		if name == debuff and (caster == "player" or caster == "pet") then
+			if not expires or expires == 0 then return false end   -- no duration
+			local fadeAt = expires - (remaining or 2)
+			if GetTime() >= fadeAt then return true end
+			if recheckAt == 0 or fadeAt < recheckAt then recheckAt = fadeAt end
+			return false
+		end
+	end
+	return true
+end
+
 local function TargetHealthBelow(threshold)
 	if not UnitExists("target") or not UnitCanAttack("player", "target") or UnitIsDeadOrGhost("target") then return false end
 	local max = UnitHealthMax("target")
@@ -120,6 +140,11 @@ local function OnCombatLog(...)
 	end
 end
 
+-- optional minimum of a rule (nil = not used): your rage / energy / mana is at least condPower
+local function ExtrasHold(rule)
+	return not rule.condPower or (UnitPower("player") or 0) >= rule.condPower
+end
+
 local function RuleActive(rule, slot)
 	local ok
 	local t = rule.trigger
@@ -127,6 +152,8 @@ local function RuleActive(rule, slot)
 		ok = HasAura(rule.buff, rule.stacks)
 	elseif t == "debuff" then
 		ok = HasTargetDebuff(rule.buff)
+	elseif t == "nodebuff" then
+		ok = MyDebuffFading(rule.buff, rule.remaining)
 	elseif t == "health" then
 		ok = TargetHealthBelow(rule.threshold)
 	elseif t == "power" then
@@ -139,7 +166,7 @@ local function RuleActive(rule, slot)
 		local usable, noMana = IsUsableAction(slot)
 		ok = usable or noMana   -- a proc does not wait for the resource
 	end
-	if not ok then return false end
+	if not ok or not ExtrasHold(rule) then return false end
 	if P.requireReady then
 		local start, duration = GetActionCooldown(slot)
 		if start and start > 0 and duration and duration > 1.5 then return false end
@@ -278,6 +305,8 @@ local function Evaluate(button)
 	if P.enabled and type(slot) == "number" and HasAction(slot) and button:IsVisible() then
 		local name = SlotName(slot)
 		local rules = name and nameRules[name]
+		-- already queued for the next swing (Heroic Strike, Cleave, Maul ...) or being cast: nothing to press
+		if rules and IsCurrentAction(slot) then rules = nil end
 		if rules then
 			for i = 1, #rules do
 				local r = rules[i]
@@ -293,6 +322,7 @@ local function Evaluate(button)
 end
 
 local function EvaluateAll()
+	recheckAt = 0
 	for button in pairs(buttons) do Evaluate(button) end
 end
 
@@ -329,6 +359,7 @@ frame:SetScript("OnUpdate", function(self, elapsed)
 	waited = waited + elapsed
 	if avoidedUntil > 0 and GetTime() >= avoidedUntil then avoidedUntil = 0; dirty = true end
 	if dodgedUntil > 0 and GetTime() >= dodgedUntil then dodgedUntil = 0; dirty = true end
+	if recheckAt > 0 and GetTime() >= recheckAt then recheckAt = 0; dirty = true end
 	if dirty and waited >= 0.05 then
 		dirty, waited = false, 0
 		EvaluateAll()
@@ -357,14 +388,21 @@ end
 -- ---------------------------------------------------------------------------------------------------------
 local GLOW_VALUES = { none = "No glow", border = "Border", pixel = "Pixel glow", shine = "Autocast shine", button = "Action button glow", proc = "Proc glow" }
 local GLOW_SORT = { "none", "border", "pixel", "shine", "button", "proc" }
-local TRIGGERS = { aura = "A buff on you", debuff = "A debuff of yours on the target", health = "The target's health is low", usable = "The spell becomes usable", avoided = "You blocked, dodged or parried (5 sec)", dodged = "Your target dodged (5 sec)", power = "Your rage / energy / mana is high" }
+local TRIGGERS = { aura = "A buff on you", debuff = "A debuff of yours on the target", nodebuff = "Your debuff on the target is missing or fading", health = "The target's health is low", usable = "The spell becomes usable", avoided = "You blocked, dodged or parried (5 sec)", dodged = "Your target dodged (5 sec)", power = "Your rage / energy / mana is high" }
 
-local function Describe(rule)
+local function DescribeExtras(rule)
+	if not rule.condPower then return "" end
+	return ", from " .. rule.condPower .. " rage / energy / mana"
+end
+
+local function DescribeTrigger(rule)
 	local t = rule.trigger
 	if t == "aura" then
 		return "when you have " .. (rule.buff or "?") .. ((rule.stacks and rule.stacks > 1) and (" x" .. rule.stacks) or "")
 	elseif t == "debuff" then
 		return "when your " .. (rule.buff or "?") .. " is on the target"
+	elseif t == "nodebuff" then
+		return "when your " .. (rule.buff or "?") .. " is missing on the target or fades in under " .. (rule.remaining or 2) .. " sec"
 	elseif t == "health" then
 		return "when the target is below " .. (rule.threshold or 20) .. "%"
 	elseif t == "power" then
@@ -375,6 +413,10 @@ local function Describe(rule)
 		return "for 5 sec after your target dodges, in any stance"
 	end
 	return "when it becomes usable"
+end
+
+local function Describe(rule)
+	return DescribeTrigger(rule) .. DescribeExtras(rule)
 end
 
 local optionsRoot
@@ -413,7 +455,7 @@ local function RuleEditors(getRule, setField, onReset, onRemove)
 		},
 		buff = {
 			type = "input", name = "Buff / debuff name", order = 5, width = "double",
-			hidden = function() local t = getRule().trigger; return t ~= "aura" and t ~= "debuff" end,
+			hidden = function() local t = getRule().trigger; return t ~= "aura" and t ~= "debuff" and t ~= "nodebuff" end,
 			get = function() return getRule().buff or "" end,
 			set = function(_, v) setField("buff", v) end,
 		},
@@ -422,6 +464,12 @@ local function RuleEditors(getRule, setField, onReset, onRemove)
 			hidden = show("aura"),
 			get = function() return getRule().stacks or 1 end,
 			set = function(_, v) setField("stacks", v) end,
+		},
+		remaining = {
+			type = "range", name = "Or fades in under (sec)", order = 6.5, min = 0, max = 10, step = 0.5,
+			hidden = show("nodebuff"),
+			get = function() return getRule().remaining or 2 end,
+			set = function(_, v) setField("remaining", v) end,
 		},
 		threshold = {
 			type = "range", name = "Target health below (%)", order = 7, min = 5, max = 100, step = 1,
@@ -435,6 +483,19 @@ local function RuleEditors(getRule, setField, onReset, onRemove)
 			get = function() return getRule().threshold or 50 end,
 			set = function(_, v) setField("threshold", v) end,
 		},
+	}
+	-- optional minimum rage / energy / mana: a switch, then its value
+	args.condPowerOn = {
+		type = "toggle", name = "Only from a minimum of rage / energy / mana", order = 10, width = "full",
+		desc = "The rule glows only once you have at least this much. For example Execute at 30 rage, the most it can use.",
+		get = function() return getRule().condPower ~= nil end,
+		set = function(_, v) setField("condPower", v and 30 or nil); Notify() end,
+	}
+	args.condPower = {
+		type = "range", name = "At least", order = 10.5, min = 1, max = 150, step = 1,
+		hidden = function() return getRule().condPower == nil end,
+		get = function() return getRule().condPower end,
+		set = function(_, v) setField("condPower", v) end,
 	}
 	if onReset then args.reset = { type = "execute", name = "Reset this rule", order = 20, func = onReset } end
 	if onRemove then args.remove = { type = "execute", name = "Remove this rule", order = 21, func = onRemove } end
@@ -481,7 +542,7 @@ local function BuildRules()
 	end
 end
 
-local addForm = { ability = "", trigger = "aura", buff = "", stacks = 1, threshold = 20, glow = "proc" }
+local addForm = { ability = "", trigger = "aura", buff = "", stacks = 1, threshold = 20, remaining = 2, glow = "proc" }
 
 local function BuildCustom()
 	for k in pairs(customGroup.args) do
@@ -561,8 +622,10 @@ local function BuildOptions()
 					desc = { type = "description", order = 1, name = "Add a rule for any spell on your bars. The spell name is the name on the button (a macro uses its #showtooltip spell)." },
 					ability = { type = "input", order = 2, name = "Spell on the button", get = function() return addForm.ability end, set = function(_, v) addForm.ability = v end },
 					trigger = { type = "select", order = 3, name = "When", values = TRIGGERS, get = function() return addForm.trigger end, set = function(_, v) addForm.trigger = v end },
-					buff = { type = "input", order = 4, name = "Buff / debuff name", hidden = function() return addForm.trigger ~= "aura" and addForm.trigger ~= "debuff" end,
+					buff = { type = "input", order = 4, name = "Buff / debuff name", hidden = function() local t = addForm.trigger; return t ~= "aura" and t ~= "debuff" and t ~= "nodebuff" end,
 						get = function() return addForm.buff end, set = function(_, v) addForm.buff = v end },
+					remaining = { type = "range", order = 4.5, name = "Or fades in under (sec)", min = 0, max = 10, step = 0.5, hidden = function() return addForm.trigger ~= "nodebuff" end,
+						get = function() return addForm.remaining end, set = function(_, v) addForm.remaining = v end },
 					threshold = { type = "range", order = 5, name = "Target health below (%)", min = 5, max = 100, step = 1, hidden = function() return addForm.trigger ~= "health" end,
 						get = function() return addForm.threshold end, set = function(_, v) addForm.threshold = v end },
 					power = { type = "range", order = 5.5, name = "Rage / energy / mana above", min = 1, max = 150, step = 1, hidden = function() return addForm.trigger ~= "power" end,
@@ -574,7 +637,8 @@ local function BuildOptions()
 						local id = "C" .. P.nextCustom
 						P.nextCustom = P.nextCustom + 1
 						P.custom[#P.custom + 1] = { id = id, ability = addForm.ability, trigger = addForm.trigger, buff = addForm.buff,
-							threshold = addForm.threshold, stacks = addForm.stacks, glow = addForm.glow }
+							threshold = addForm.threshold, stacks = addForm.stacks, glow = addForm.glow,
+							remaining = addForm.trigger == "nodebuff" and addForm.remaining or nil }
 						addForm.ability, addForm.buff = "", ""
 						Reset(); BuildCustom(); Notify()
 					end },
@@ -671,7 +735,7 @@ events:SetScript("OnEvent", function(self, event, arg1, ...)
 end)
 for _, e in ipairs{ "PLAYER_LOGIN", "PLAYER_ENTERING_WORLD", "UNIT_AURA", "UNIT_HEALTH", "UNIT_MAXHEALTH", "PLAYER_TARGET_CHANGED",
                     "UNIT_RAGE", "UNIT_ENERGY", "UNIT_MANA", "UNIT_RUNIC_POWER", "UNIT_FOCUS",
-                    "ACTIONBAR_UPDATE_USABLE", "ACTIONBAR_UPDATE_COOLDOWN", "ACTIONBAR_SLOT_CHANGED", "UPDATE_SHAPESHIFT_FORM",
+                    "ACTIONBAR_UPDATE_USABLE", "ACTIONBAR_UPDATE_COOLDOWN", "ACTIONBAR_UPDATE_STATE", "ACTIONBAR_SLOT_CHANGED", "UPDATE_SHAPESHIFT_FORM",
                     "ACTIONBAR_PAGE_CHANGED", "UPDATE_BONUS_ACTIONBAR", "SPELLS_CHANGED", "UPDATE_MACROS", "PLAYER_REGEN_DISABLED",
                     "PLAYER_REGEN_ENABLED", "COMBAT_LOG_EVENT_UNFILTERED" } do
 	events:RegisterEvent(e)

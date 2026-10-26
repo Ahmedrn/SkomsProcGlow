@@ -4,6 +4,7 @@ local _, ns = ...
 --   ability  the spell on the button (a macro counts when its #showtooltip spell is this one)
 --   trigger  aura    = a buff on you (buff, stacks)
 --            debuff  = a debuff of yours on the target (buff)
+--            nodebuff = your debuff (buff) is missing on the target or fades in under `remaining` seconds
 --            health  = the target's health is below `threshold` percent
 --            power   = your rage / energy / mana / runic power is above `threshold`
 --            avoided = you blocked, dodged or parried in the last 5 seconds (Revenge, in any stance)
