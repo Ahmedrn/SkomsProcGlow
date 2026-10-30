@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.3.0 (2026-10-30)
+
+- Your own rules are shown, and used, only on the class they were made on; the rules of a shared profile no longer appear on other classes.
+- The settings are in tabs (with a Warrior tab, and without the Help tab: the About tab has it), and the rules list shows short names you can read at a glance, with the full sentence on each rule.
+- Warriors: Overpower, Revenge and Execute no longer glow while changing stance would lose rage (above what Tactical Mastery keeps); an option turns this off.
+- One Skom's minimap button opens all your Skom's addons when two or more are installed (/skoms).
+
 ## 1.2.0 (2026-10-26)
 
 - Minimum rage, energy or mana per rule, for example Execute only from 30 rage.

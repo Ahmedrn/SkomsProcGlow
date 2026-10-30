@@ -20,6 +20,7 @@ local defaults = {
 		requireReady = true,   -- only glow while the spell is off cooldown
 		stanceHint = true,     -- another color when the spell needs another stance
 		stanceColor = { 0.25, 0.55, 1 },
+		stanceRageGuard = true, -- no glow when changing stance would lose rage
 		overrides = {},        -- [ruleId] = { enabled, glow, color, buff, stacks, threshold, remaining, condPower }
 		custom = {},           -- user rules
 		nextCustom = 1,
@@ -43,6 +44,13 @@ local function Merge(rule)
 	return m
 end
 
+-- The profile (and its own rules) can be shared by characters of other classes: a rule belongs to the class it was made on.
+-- Rules from before that have no class; the first character who knows the spell claims it.
+local function MyRule(rule)
+	if not rule.class and rule.ability and GetSpellInfo(rule.ability) then rule.class = playerClass end
+	return not rule.class or rule.class == playerClass
+end
+
 local function Compile()
 	wipe(nameRules)
 	local function add(rule)
@@ -55,7 +63,7 @@ local function Compile()
 		list[#list + 1] = rule
 	end
 	for _, rule in ipairs(ns.DefaultRules[playerClass] or {}) do add(Merge(rule)) end
-	for _, rule in ipairs(P.custom) do add(rule) end
+	for _, rule in ipairs(P.custom) do if MyRule(rule) then add(rule) end end
 end
 
 -- ---------------------------------------------------------------------------------------------------------
@@ -78,6 +86,7 @@ end
 -- your debuff is missing on the target, or fades in under `remaining` seconds. Nothing fires when that moment
 -- comes, so the time is kept in recheckAt and the OnUpdate asks for an evaluation then.
 local recheckAt = 0
+local dirty = false   -- something changed: evaluate the buttons on the next update
 local function MyDebuffFading(debuff, remaining)
 	if not debuff or debuff == "" or not UnitExists("target") or not UnitCanAttack("player", "target")
 		or UnitIsDeadOrGhost("target") then return false end
@@ -298,6 +307,18 @@ local function WrongStance(spell)
 	return not (now and need[now])
 end
 
+-- Tactical Mastery keeps 10 rage per rank when you change stance; the rest is lost
+local keptRage
+local function KeptRage()
+	if keptRage then return keptRage end
+	keptRage = 0
+	for i = 1, (GetNumTalents and GetNumTalents(1) or 0) do
+		local name, _, _, _, rank = GetTalentInfo(1, i)
+		if name == "Tactical Mastery" then keptRage = (rank or 0) * 10 break end
+	end
+	return keptRage
+end
+
 local function Evaluate(button)
 	if testButtons and testButtons[button] then return end
 	local slot = button.action
@@ -312,7 +333,11 @@ local function Evaluate(button)
 				local r = rules[i]
 				if RuleActive(r, slot) then
 					style, color = r.glow, r.color
-					if P.stanceHint and WrongStance(name) then color = P.stanceColor end
+					if P.stanceHint and WrongStance(name) then
+						color = P.stanceColor
+						-- changing stance now would lose rage: it is not the moment to press this
+						if P.stanceRageGuard and (UnitPower("player") or 0) > KeptRage() then style = nil end
+					end
 					break
 				end
 			end
@@ -353,7 +378,7 @@ local function Scan()
 	end
 end
 
-local dirty, waited = false, 0
+local waited = 0
 local frame = CreateFrame("Frame")
 frame:SetScript("OnUpdate", function(self, elapsed)
 	waited = waited + elapsed
@@ -419,6 +444,26 @@ local function Describe(rule)
 	return DescribeTrigger(rule) .. DescribeExtras(rule)
 end
 
+-- the few words after the spell name in the list on the left (the tree is narrow)
+local function ShortTrigger(rule)
+	local t = rule.trigger
+	if t == "aura" then return rule.buff or "?"
+	elseif t == "debuff" then return "your " .. (rule.buff or "?")
+	elseif t == "nodebuff" then return (rule.buff or "?") .. " fading"
+	elseif t == "health" then return "target under " .. (rule.threshold or 20) .. "%"
+	elseif t == "power" then return "rage over " .. (rule.threshold or 50)
+	elseif t == "avoided" then return "after block / dodge"
+	elseif t == "dodged" then return "target dodged"
+	end
+	return "usable"
+end
+
+local function RuleLabel(rule)
+	local label = (rule.ability or "?") .. "  |cff999999" .. ShortTrigger(rule) .. "|r"
+	if rule.enabled == false then return "|cff808080" .. (rule.ability or "?") .. " (off)|r" end
+	return label
+end
+
 local optionsRoot
 local rulesGroup, customGroup
 
@@ -431,6 +476,13 @@ end
 local function RuleEditors(getRule, setField, onReset, onRemove)
 	local function show(trigger) return function() return getRule().trigger ~= trigger end end
 	local args = {
+		summary = {
+			type = "description", order = -1, fontSize = "medium",
+			name = function()
+				local r = getRule()
+				return "|cffffd100" .. (r.ability or "?") .. "|r glows " .. Describe(r) .. "."
+			end,
+		},
 		enabled = {
 			type = "toggle", name = "Enabled", order = 1,
 			get = function() return getRule().enabled ~= false end,
@@ -530,13 +582,7 @@ local function BuildRules()
 		end
 		rulesGroup.args[id] = {
 			type = "group", order = i, inline = false,
-			name = function()
-				local r = getRule()
-				local n = r.ability .. "  |cff999999" .. Describe(r) .. "|r"
-				if r.enabled == false then return "|cff808080" .. r.ability .. "|r" end
-				return n
-			end,
-			desc = function() return Describe(getRule()) end,
+			name = function() return RuleLabel(getRule()) end,
 			args = RuleEditors(getRule, setField, function() P.overrides[id] = nil; Reset(); Notify() end),
 		}
 	end
@@ -549,6 +595,7 @@ local function BuildCustom()
 		if k:find("^rule") then customGroup.args[k] = nil end
 	end
 	for i, rule in ipairs(P.custom) do
+	if MyRule(rule) then
 		local function getRule() return rule end
 		local function setField(k, v)
 			if k == "color" then rule.color = (v ~= false) and v or nil else rule[k] = v end
@@ -556,7 +603,7 @@ local function BuildCustom()
 		end
 		customGroup.args["rule" .. rule.id] = {
 			type = "group", order = 20 + i,
-			name = function() return (rule.ability or "?") .. "  |cff999999" .. Describe(rule) .. "|r" end,
+			name = function() return RuleLabel(rule) end,
 			args = (function()
 				local a = RuleEditors(getRule, setField, nil, function()
 					for j, r in ipairs(P.custom) do if r == rule then table.remove(P.custom, j) break end end
@@ -570,52 +617,61 @@ local function BuildCustom()
 			end)(),
 		}
 	end
+	end
 end
 
 local function BuildOptions()
 	optionsRoot = {
-		type = "group", name = "SkomsProcGlow",
+		type = "group", name = "Skom's Proc Glow", childGroups = "tab",
 		args = {
-			enabled = {
-				type = "toggle", name = "Enabled", order = 1,
-				get = function() return P.enabled end,
-				set = function(_, v) P.enabled = v; Reset() end,
-			},
-			requireReady = {
-				type = "toggle", order = 2, width = "full", name = "Only glow while the spell is off cooldown",
-				get = function() return P.requireReady end,
-				set = function(_, v) P.requireReady = v; Reset() end,
-			},
-			stanceHint = {
-				type = "toggle", order = 2.1, width = "double", name = "Another color when you must change stance first",
-				desc = "Warriors: Overpower (Battle Stance), Revenge (Defensive Stance) and Execute (Battle or Berserker Stance) glow in this color while you are in another stance.",
-				get = function() return P.stanceHint end,
-				set = function(_, v) P.stanceHint = v; Reset() end,
-			},
-			stanceColor = {
-				type = "color", order = 2.2, name = "Stance color",
-				disabled = function() return not P.stanceHint end,
-				get = function() local c = P.stanceColor; return c[1], c[2], c[3] end,
-				set = function(_, r, g, b) P.stanceColor = { r, g, b }; Reset() end,
-			},
-			info = {
-				type = "description", order = 3,
-				name = "Glows work on the Blizzard bars, Bartender4 and most bar addons. A macro counts through its #showtooltip spell. "
-					.. "Pixel glow, autocast shine, action button glow and proc glow come from LibCustomGlow-1.0 (included with WeakAuras); without it a border is used.",
-			},
-			test = { type = "execute", order = 4, name = "Test the glow styles", desc = "Shows each style on the first bar's buttons for a few seconds.",
-				func = function() ns.Test() end },
-			rules = { type = "group", order = 10, name = "Rules for your class", args = {} },
-			help = {
-				type = "group", order = 30, name = "Help and feedback",
+			general = {
+				type = "group", order = 1, name = "General",
 				args = {
-					text = { type = "description", fontSize = "medium", order = 1,
-						name = "A rule missing for your class or spec, a wrong buff name, a glow that does not show? Tell me which class, spec and spell and I will fix or add it.\n\n"
-							.. "- GitHub issues: https://github.com/Ahmedrn/SkomsProcGlow/issues\n"
-							.. "- A comment on the Warperia page\n"
-							.. "- Discord: skomzx" },
+					enabled = {
+						type = "toggle", name = "Enabled", order = 1,
+						get = function() return P.enabled end,
+						set = function(_, v) P.enabled = v; Reset() end,
+					},
+					requireReady = {
+						type = "toggle", order = 2, width = "full", name = "Only glow while the spell is off cooldown",
+						get = function() return P.requireReady end,
+						set = function(_, v) P.requireReady = v; Reset() end,
+					},
+					info = {
+						type = "description", order = 3,
+						name = "Glows work on the Blizzard bars, Bartender4 and most bar addons. A macro counts through its #showtooltip spell. "
+							.. "Pixel glow, autocast shine, action button glow and proc glow come from LibCustomGlow-1.0 (included with WeakAuras); without it a border is used.",
+					},
+					test = { type = "execute", order = 4, name = "Test the glow styles", desc = "Shows each style on the first bar's buttons for a few seconds.",
+						func = function() ns.Test() end },
 				},
 			},
+			warrior = {
+				type = "group", order = 2, name = "Warrior",
+				hidden = function() return playerClass ~= "WARRIOR" end,
+				args = {
+					stanceHint = {
+						type = "toggle", order = 1, width = "full", name = "Another color when you must change stance first",
+						desc = "Overpower (Battle Stance), Revenge (Defensive Stance) and Execute (Battle or Berserker Stance) glow in this color while you are in another stance.",
+						get = function() return P.stanceHint end,
+						set = function(_, v) P.stanceHint = v; Reset() end,
+					},
+					stanceColor = {
+						type = "color", order = 2, name = "Stance color",
+						disabled = function() return not P.stanceHint end,
+						get = function() local c = P.stanceColor; return c[1], c[2], c[3] end,
+						set = function(_, r, g, b) P.stanceColor = { r, g, b }; Reset() end,
+					},
+					stanceRageGuard = {
+						type = "toggle", order = 3, width = "full", name = "No glow when changing stance would lose rage",
+						desc = "The stance glow is switched off while your rage is above what Tactical Mastery keeps (10 per rank). Spend the rage first and the glow comes back.",
+						disabled = function() return not P.stanceHint end,
+						get = function() return P.stanceRageGuard end,
+						set = function(_, v) P.stanceRageGuard = v; Reset() end,
+					},
+				},
+			},
+			rules = { type = "group", order = 10, name = "Rules for your class", args = {} },
 			custom = {
 				type = "group", order = 20, name = "Your own rules",
 				args = {
@@ -636,7 +692,7 @@ local function BuildOptions()
 						if addForm.ability == "" then return end
 						local id = "C" .. P.nextCustom
 						P.nextCustom = P.nextCustom + 1
-						P.custom[#P.custom + 1] = { id = id, ability = addForm.ability, trigger = addForm.trigger, buff = addForm.buff,
+						P.custom[#P.custom + 1] = { id = id, class = playerClass, ability = addForm.ability, trigger = addForm.trigger, buff = addForm.buff,
 							threshold = addForm.threshold, stacks = addForm.stacks, glow = addForm.glow,
 							remaining = addForm.trigger == "nodebuff" and addForm.remaining or nil }
 						addForm.ability, addForm.buff = "", ""
@@ -711,9 +767,13 @@ events:SetScript("OnEvent", function(self, event, arg1, ...)
 		local options = BuildOptions()
 		if ns.AboutGroup then options.args.about = ns.AboutGroup(99) end   -- about.lua needs a full restart after an update
 		LibStub("AceConfig-3.0"):RegisterOptionsTable("SkomsProcGlow", options)
-		LibStub("AceConfigDialog-3.0"):AddToBlizOptions("SkomsProcGlow", "SkomsProcGlow")
+		-- the lists of rules on the left are narrow by default (175): give them room
+		for _, group in ipairs{ "rules", "custom" } do
+			LibStub("AceConfigDialog-3.0"):GetStatusTable("SkomsProcGlow", { group }).treewidth = 270
+		end
+		LibStub("AceConfigDialog-3.0"):AddToBlizOptions("SkomsProcGlow", "Skom's Proc Glow")
 		LibStub("AceConfig-3.0"):RegisterOptionsTable("SkomsProcGlowProfiles", LibStub("AceDBOptions-3.0"):GetOptionsTable(db))
-		LibStub("AceConfigDialog-3.0"):AddToBlizOptions("SkomsProcGlowProfiles", "Profiles", "SkomsProcGlow")
+		LibStub("AceConfigDialog-3.0"):AddToBlizOptions("SkomsProcGlowProfiles", "Profiles", "Skom's Proc Glow")
 		Scan()
 		dirty = true
 	elseif event == "COMBAT_LOG_EVENT_UNFILTERED" then
@@ -725,6 +785,9 @@ events:SetScript("OnEvent", function(self, event, arg1, ...)
 	elseif event == "UNIT_AURA" or event == "UNIT_HEALTH" or event == "UNIT_MAXHEALTH" or event == "UNIT_RAGE" or event == "UNIT_ENERGY"
 		or event == "UNIT_MANA" or event == "UNIT_RUNIC_POWER" or event == "UNIT_FOCUS" then
 		if arg1 == "player" or arg1 == "target" then dirty = true end
+	elseif event == "PLAYER_TALENT_UPDATE" or event == "CHARACTER_POINTS_CHANGED" then
+		keptRage = nil
+		dirty = true
 	elseif event == "ACTIONBAR_SLOT_CHANGED" or event == "UPDATE_SHAPESHIFT_FORM" or event == "ACTIONBAR_PAGE_CHANGED"
 		or event == "UPDATE_BONUS_ACTIONBAR" or event == "SPELLS_CHANGED" or event == "UPDATE_MACROS" then
 		wipe(slotNames)
@@ -737,7 +800,7 @@ for _, e in ipairs{ "PLAYER_LOGIN", "PLAYER_ENTERING_WORLD", "UNIT_AURA", "UNIT_
                     "UNIT_RAGE", "UNIT_ENERGY", "UNIT_MANA", "UNIT_RUNIC_POWER", "UNIT_FOCUS",
                     "ACTIONBAR_UPDATE_USABLE", "ACTIONBAR_UPDATE_COOLDOWN", "ACTIONBAR_UPDATE_STATE", "ACTIONBAR_SLOT_CHANGED", "UPDATE_SHAPESHIFT_FORM",
                     "ACTIONBAR_PAGE_CHANGED", "UPDATE_BONUS_ACTIONBAR", "SPELLS_CHANGED", "UPDATE_MACROS", "PLAYER_REGEN_DISABLED",
-                    "PLAYER_REGEN_ENABLED", "COMBAT_LOG_EVENT_UNFILTERED" } do
+                    "PLAYER_REGEN_ENABLED", "COMBAT_LOG_EVENT_UNFILTERED", "PLAYER_TALENT_UPDATE", "CHARACTER_POINTS_CHANGED" } do
 	events:RegisterEvent(e)
 end
 
